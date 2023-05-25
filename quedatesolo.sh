@@ -1,4 +1,6 @@
 #!/bin/bash
+# Script creado por SergiGM87
+# Tiene la finalidad de hechar a todos los usuarios de una red Wifi a excepción de aquellos a los que se elija.
 if [ -f ipNo.txt ]; then
 rm ipNo.txt
 fi
