@@ -1,4 +1,6 @@
 #!/bin/bash
+# Script creado por Sergigm87
+# Verifica la conectividad de una dirección IP
 
 if [ -z "$1" ]; then
 echo "Indica ip del siguiente modo: bash ping.sh 8.8.8.8"
