@@ -2,40 +2,44 @@
 clear
 
 # ------------------------------------------------------------------
-# Ficheros de configuración y variables
+# Archivos de configuración y variables
 # ------------------------------------------------------------------
-NODE_LIST_FILE="$HOME/.meshtastic_nodes"
-WELCOME_MESSAGE_FILE="$HOME/.meshtastic_welcome_message"
+ARCHIVO_LISTA_NODOS="$HOME/.meshtastic_nodos"
+ARCHIVO_MENSAJE_BIENVENIDA="$HOME/.meshtastic_mensaje_bienvenida"
 
-# Variables de ubicación del nodo propietario (si no aparecen sus coordenadas)
+# Variables de ubicación del nodo propietario (en caso de que no se muestren sus coordenadas)
 # Ajusta estos valores a tu ubicación real
-MY_LAT="41.123456"
-MY_LON="2.123456"
+MI_LATITUD="41.123456"
+MI_LONGITUD="2.123456"
 
 # Crear archivos de configuración si no existen
-if [ ! -f "$NODE_LIST_FILE" ]; then
+if [ ! -f "$ARCHIVO_LISTA_NODOS" ]; then
     echo "Creando la base de datos de nodos detectados..."
-    touch "$NODE_LIST_FILE"
+    touch "$ARCHIVO_LISTA_NODOS"
 fi
 
-if [ ! -f "$WELCOME_MESSAGE_FILE" ]; then
-    echo "Bienvenido %s! Pásate por nuestro grupo! https://t.me/MeshtasticGirona" > "$WELCOME_MESSAGE_FILE"
+if [ ! -f "$ARCHIVO_MENSAJE_BIENVENIDA" ]; then
+    echo "Bienvenido %s! ¡Únete a nuestro grupo! https://t.me/MeshtasticGirona" > "$ARCHIVO_MENSAJE_BIENVENIDA"
 fi
 
-WELCOME_MESSAGE="$(cat "$WELCOME_MESSAGE_FILE")"
+MENSAJE_BIENVENIDA="$(cat "$ARCHIVO_MENSAJE_BIENVENIDA")"
 
 # ------------------------------------------------------------------
 # Menú principal
 # ------------------------------------------------------------------
 function mostrar_menu() {
     clear
+    banner=$(figlet "Meshtastic" -t)
+    echo "$banner"
     echo "==============================================="
     echo "           MENÚ DE CONFIGURACIÓN"
     echo "==============================================="
     echo "1) Mensaje de Bienvenida Automatizado"
     echo "2) Enviar mensaje manual"
-    echo "3) Información de los nodos"
-    echo "4) Salir"
+    echo "3) Información de nodos"
+    echo "4) Ver mapa de nodos"
+    echo "-----------------------------------------------"
+    echo "5) Salir"
     echo "-----------------------------------------------"
 }
 
@@ -49,7 +53,7 @@ function mensaje_bienvenida_automatizado() {
     echo "==============================================="
     echo "Mensaje de bienvenida actual:"
     echo "----------------------------------"
-    echo "$WELCOME_MESSAGE"
+    echo "$MENSAJE_BIENVENIDA"
     echo "----------------------------------"
 
     read -rp "¿Deseas editarlo? (s/n): " respuesta
@@ -57,8 +61,8 @@ function mensaje_bienvenida_automatizado() {
         s|S)
             echo
             read -rp "Introduce el nuevo mensaje de bienvenida: " nuevo_mensaje
-            echo "$nuevo_mensaje" > "$WELCOME_MESSAGE_FILE"
-            WELCOME_MESSAGE="$nuevo_mensaje"
+            echo "$nuevo_mensaje" > "$ARCHIVO_MENSAJE_BIENVENIDA"
+            MENSAJE_BIENVENIDA="$nuevo_mensaje"
             echo "Mensaje de bienvenida actualizado."
             ;;
         *)
@@ -82,7 +86,7 @@ function mensaje_bienvenida_automatizado() {
 # ------------------------------------------------------------------
 # Función para decodificar secuencias Unicode (para nombres)
 # ------------------------------------------------------------------
-function decode_unicode() {
+function decodificar_unicode() {
     python3 -c "import sys, json; print(json.loads(sys.stdin.read().strip()))"
 }
 
@@ -116,16 +120,16 @@ function iniciar_monitoreo() {
         fi
 
         # Si la base de datos está vacía, guardamos sin enviar
-        if [ ! -s "$NODE_LIST_FILE" ]; then
+        if [ ! -s "$ARCHIVO_LISTA_NODOS" ]; then
             echo "Guardando la lista inicial de nodos..."
-            cat /tmp/current_nodes > "$NODE_LIST_FILE"
+            cat /tmp/current_nodes > "$ARCHIVO_LISTA_NODOS"
         else
             # Comparamos la lista actual con la base de datos
-            while read -r node_name; do
-                if ! grep -Fxq "$node_name" "$NODE_LIST_FILE"; then
-                    echo "🆕 Nuevo nodo detectado: $node_name"
-                    meshtastic --sendtext "$(printf "$WELCOME_MESSAGE" "$node_name")"
-                    echo "$node_name" >> "$NODE_LIST_FILE"
+            while read -r nombre_nodo; do
+                if ! grep -Fxq "$nombre_nodo" "$ARCHIVO_LISTA_NODOS"; then
+                    echo "🆕 Nuevo nodo detectado: $nombre_nodo"
+                    meshtastic --sendtext "$(printf "$MENSAJE_BIENVENIDA" "$nombre_nodo")"
+                    echo "$nombre_nodo" >> "$ARCHIVO_LISTA_NODOS"
                     a=0
                 fi
             done < /tmp/current_nodes
@@ -142,54 +146,54 @@ function iniciar_monitoreo() {
 # 2) Enviar mensaje manual
 # ------------------------------------------------------------------
 function listar_nodos_id() {
-    local output
-    output="$(meshtastic --info 2>/dev/null)"
-    [ -z "$output" ] && return 1
+    local salida
+    salida="$(meshtastic --info 2>/dev/null)"
+    [ -z "$salida" ] && return 1
 
-    local in_nodes=0
-    local in_node=0
-    local depth=0
-    local node_id=""
-    local short_name=""
+    local en_nodos=0
+    local en_nodo=0
+    local profundidad=0
+    local id_nodo=""
+    local nombre_corto=""
 
-    while IFS= read -r line; do
-      if echo "$line" | grep -q "Nodes in mesh: {"; then
-        in_nodes=1
+    while IFS= read -r linea; do
+      if echo "$linea" | grep -q "Nodes in mesh: {"; then
+        en_nodos=1
         continue
       fi
-      if [ "$in_nodes" -eq 1 ] && echo "$line" | grep -q "^Preferences:"; then
+      if [ "$en_nodos" -eq 1 ] && echo "$linea" | grep -q "^Preferences:"; then
         break
       fi
-      [ "$in_nodes" -eq 0 ] && continue
+      [ "$en_nodos" -eq 0 ] && continue
 
-      if [ "$in_node" -eq 0 ] && echo "$line" | grep -Eoq '^[[:space:]]*"[!][^"]+":[[:space:]]*\{'; then
-        in_node=1
-        depth=1
-        node_id="$(echo "$line" | sed -n 's/^[[:space:]]*"\(![^"]*\)".*/\1/p')"
-        short_name=""
+      if [ "$en_nodo" -eq 0 ] && echo "$linea" | grep -Eoq '^[[:space:]]*"[!][^"]+":[[:space:]]*\{'; then
+        en_nodo=1
+        profundidad=1
+        id_nodo="$(echo "$linea" | sed -n 's/^[[:space:]]*"\(![^"]*\)".*/\1/p')"
+        nombre_corto=""
         continue
       fi
 
-      if [ "$in_node" -eq 1 ]; then
-        opens=$(echo "$line" | sed 's/[^{}]//g' | tr -cd '{' | wc -c)
-        closes=$(echo "$line" | sed 's/[^{}]//g' | tr -cd '}' | wc -c)
-        depth=$(( depth + opens - closes ))
+      if [ "$en_nodo" -eq 1 ]; then
+        opens=$(echo "$linea" | sed 's/[^{}]//g' | tr -cd '{' | wc -c)
+        closes=$(echo "$linea" | sed 's/[^{}]//g' | tr -cd '}' | wc -c)
+        profundidad=$(( profundidad + opens - closes ))
 
-        if echo "$line" | grep -q '"shortName":'; then
-          local extracted
-          extracted="$(echo "$line" | sed -n 's/.*"shortName": *"\([^"]*\)".*/\1/p')"
-          if [ -n "$extracted" ]; then
-            short_name="$extracted"
+        if echo "$linea" | grep -q '"shortName":'; then
+          local extraido
+          extraido="$(echo "$linea" | sed -n 's/.*"shortName": *"\([^"]*\)".*/\1/p')"
+          if [ -n "$extraido" ]; then
+            nombre_corto="$extraido"
           fi
         fi
 
-        if [ "$depth" -le 0 ]; then
-          in_node=0
-          [ -z "$short_name" ] && short_name="(sin shortName)"
-          echo "$node_id | $short_name"
+        if [ "$profundidad" -le 0 ]; then
+          en_nodo=0
+          [ -z "$nombre_corto" ] && nombre_corto="(sin shortName)"
+          echo "$id_nodo | $nombre_corto"
         fi
       fi
-    done <<< "$output"
+    done <<< "$salida"
 
     return 0
 }
@@ -199,21 +203,21 @@ function enviar_mensaje() {
     echo "¿A quién quieres enviar el mensaje?"
     echo "1) A un nodo concreto (muestra lista Node ID / shortName)"
     echo "2) Al canal por defecto (^all)"
-    read -rp "Selecciona una opción [1/2]: " tipo_dest
+    read -rp "Selecciona una opción [1/2]: " tipo_destino
 
     echo
     read -rp "Escribe el mensaje a enviar: " mensaje
 
-    case "$tipo_dest" in
+    case "$tipo_destino" in
         1)
             echo "Lista de nodos detectados (NodeID | shortName):"
             echo "----------------------------------------------"
             listar_nodos_id
             echo "----------------------------------------------"
             echo
-            read -rp "Introduce el Node ID de destino (ej: !99c95e76): " node_id
-            meshtastic --sendtext "$mensaje" --dest "$node_id"
-            echo "Mensaje enviado al nodo $node_id."
+            read -rp "Introduce el Node ID de destino (ej: !99c95e76): " id_nodo
+            meshtastic --sendtext "$mensaje" --dest "$id_nodo"
+            echo "Mensaje enviado al nodo $id_nodo."
             ;;
         2)
             meshtastic --dest '^all' --sendtext "$mensaje"
@@ -233,8 +237,8 @@ function enviar_mensaje() {
 # ------------------------------------------------------------------
 function informacion_nodos() {
     echo "Obteniendo información de los nodos..."
-    MESHTASTIC_OUTPUT="$(meshtastic --info 2>/dev/null)"
-    if [ -z "$MESHTASTIC_OUTPUT" ]; then
+    SALIDA_MESHTASTIC="$(meshtastic --info 2>/dev/null)"
+    if [ -z "$SALIDA_MESHTASTIC" ]; then
         echo "No hay salida de 'meshtastic --info'."
         read -p "Presiona Enter para continuar..."
         return
@@ -245,103 +249,103 @@ function informacion_nodos() {
     printf '%.0s-' {1..100}
     echo
 
-    IN_NODES=0
-    IN_NODE=0
-    DEPTH=0
-    NODE_ID=""
-    NAME=""
-    LAT=""
-    LON=""
-    ALT=""
-    BAT=""
-    SNR=""
-    HOPS=""
+    en_nodos=0
+    en_nodo=0
+    profundidad=0
+    id_nodo=""
+    nombre=""
+    lat=""
+    lon=""
+    alt=""
+    bat=""
+    snr=""
+    hops=""
 
-    while IFS= read -r line; do
+    while IFS= read -r linea; do
         # Inicia sección de nodos
-        if echo "$line" | grep -q "Nodes in mesh: {"; then
-            IN_NODES=1
+        if echo "$linea" | grep -q "Nodes in mesh: {"; then
+            en_nodos=1
             continue
         fi
         # Fin de la sección de nodos
-        if [ "$IN_NODES" -eq 1 ] && echo "$line" | grep -q "^Preferences:"; then
+        if [ "$en_nodos" -eq 1 ] && echo "$linea" | grep -q "^Preferences:"; then
             break
         fi
-        [ "$IN_NODES" -eq 0 ] && continue
+        [ "$en_nodos" -eq 0 ] && continue
 
         # Inicio del bloque de un nodo
-        if [ "$IN_NODE" -eq 0 ] && echo "$line" | grep -Eoq '^[[:space:]]*"[!][^"]+":[[:space:]]*\{'; then
-            IN_NODE=1
-            DEPTH=1
-            NODE_ID=$(echo "$line" | sed -n 's/^[[:space:]]*"\(![^"]*\)".*/\1/p')
-            NAME=""
-            LAT=""
-            LON=""
-            ALT=""
-            BAT=""
-            SNR=""
-            HOPS=""
+        if [ "$en_nodo" -eq 0 ] && echo "$linea" | grep -Eoq '^[[:space:]]*"[!][^"]+":[[:space:]]*\{'; then
+            en_nodo=1
+            profundidad=1
+            id_nodo=$(echo "$linea" | sed -n 's/^[[:space:]]*"\(![^"]*\)".*/\1/p')
+            nombre=""
+            lat=""
+            lon=""
+            alt=""
+            bat=""
+            snr=""
+            hops=""
             continue
         fi
 
-        if [ "$IN_NODE" -eq 1 ]; then
+        if [ "$en_nodo" -eq 1 ]; then
             # Actualización del contador de llaves
-            opens=$(echo "$line" | sed 's/[^{}]//g' | tr -cd '{' | wc -c)
-            closes=$(echo "$line" | sed 's/[^{}]//g' | tr -cd '}' | wc -c)
-            DEPTH=$(( DEPTH + opens - closes ))
+            opens=$(echo "$linea" | sed 's/[^{}]//g' | tr -cd '{' | wc -c)
+            closes=$(echo "$linea" | sed 's/[^{}]//g' | tr -cd '}' | wc -c)
+            profundidad=$(( profundidad + opens - closes ))
 
             # Extraer longName (preferido) y, si no existe, shortName decodificado
-            if echo "$line" | grep -q '"longName":'; then
-                extracted=$(echo "$line" | sed -n 's/.*"longName": *"\([^"]*\)".*/\1/p')
-                if [ -n "$extracted" ]; then
-                    NAME=$(printf '"%s"' "$extracted" | decode_unicode)
+            if echo "$linea" | grep -q '"longName":'; then
+                extraido=$(echo "$linea" | sed -n 's/.*"longName": *"\([^"]*\)".*/\1/p')
+                if [ -n "$extraido" ]; then
+                    nombre=$(printf '"%s"' "$extraido" | decodificar_unicode)
                 fi
             fi
-            if [ -z "$NAME" ] && echo "$line" | grep -q '"shortName":'; then
-                extracted=$(echo "$line" | sed -n 's/.*"shortName": *"\([^"]*\)".*/\1/p')
-                if [ -n "$extracted" ]; then
-                    NAME=$(printf '"%s"' "$extracted" | decode_unicode)
+            if [ -z "$nombre" ] && echo "$linea" | grep -q '"shortName":'; then
+                extraido=$(echo "$linea" | sed -n 's/.*"shortName": *"\([^"]*\)".*/\1/p')
+                if [ -n "$extraido" ]; then
+                    nombre=$(printf '"%s"' "$extraido" | decodificar_unicode)
                 fi
             fi
 
             # Extraer coordenadas
-            if echo "$line" | grep -q '"latitude":'; then
-                extracted=$(echo "$line" | sed -n 's/.*"latitude": *\([0-9.\-]*\).*/\1/p')
-                [ -n "$extracted" ] && LAT="$extracted"
+            if echo "$linea" | grep -q '"latitude":'; then
+                extraido=$(echo "$linea" | sed -n 's/.*"latitude": *\([0-9.\-]*\).*/\1/p')
+                [ -n "$extraido" ] && lat="$extraido"
             fi
-            if echo "$line" | grep -q '"longitude":'; then
-                extracted=$(echo "$line" | sed -n 's/.*"longitude": *\([0-9.\-]*\).*/\1/p')
-                [ -n "$extracted" ] && LON="$extracted"
+            if echo "$linea" | grep -q '"longitude":'; then
+                extraido=$(echo "$linea" | sed -n 's/.*"longitude": *\([0-9.\-]*\).*/\1/p')
+                [ -n "$extraido" ] && lon="$extraido"
             fi
             # Altitud (si existe)
-            if echo "$line" | grep -q '"altitude":'; then
-                extracted=$(echo "$line" | sed -n 's/.*"altitude": *\([0-9.\-]*\).*/\1/p')
-                [ -n "$extracted" ] && ALT="$extracted"
+            if echo "$linea" | grep -q '"altitude":'; then
+                extraido=$(echo "$linea" | sed -n 's/.*"altitude": *\([0-9.\-]*\).*/\1/p')
+                [ -n "$extraido" ] && alt="$extraido"
             fi
             # Nivel de batería
-            if echo "$line" | grep -q '"batteryLevel":'; then
-                extracted=$(echo "$line" | sed -n 's/.*"batteryLevel": *\([0-9]*\).*/\1/p')
-                [ -n "$extracted" ] && BAT="$extracted"
+            if echo "$linea" | grep -q '"batteryLevel":'; then
+                extraido=$(echo "$linea" | sed -n 's/.*"batteryLevel": *\([0-9]*\).*/\1/p')
+                [ -n "$extraido" ] && bat="$extraido"
             fi
             # SNR
-            if echo "$line" | grep -q '"snr":'; then
-                extracted=$(echo "$line" | sed -n 's/.*"snr": *\([0-9.\-]*\).*/\1/p')
-                [ -n "$extracted" ] && SNR="$extracted"
+            if echo "$linea" | grep -q '"snr":'; then
+                extraido=$(echo "$linea" | sed -n 's/.*"snr": *\([0-9.\-]*\).*/\1/p')
+                [ -n "$extraido" ] && snr="$extraido"
             fi
             # Hops (si existe)
-            if echo "$line" | grep -q '"hopsAway":'; then
-                extracted=$(echo "$line" | sed -n 's/.*"hopsAway": *\([0-9]*\).*/\1/p')
-                [ -n "$extracted" ] && HOPS="$extracted"
+            if echo "$linea" | grep -q '"hopsAway":'; then
+                extraido=$(echo "$linea" | sed -n 's/.*"hopsAway": *\([0-9]*\).*/\1/p')
+                [ -n "$extraido" ] && hops="$extraido"
             fi
 
             # Al cerrar el bloque del nodo, imprimir la línea de la tabla
-            if [ "$DEPTH" -le 0 ]; then
-                IN_NODE=0
-                [ -z "$NAME" ] && NAME="Nodo sin nombre"
-                printf "%-12s %-30s %-10s %-10s %-6s %-6s %-6s %-6s\n" "$NODE_ID" "$NAME" "$LAT" "$LON" "$ALT" "$BAT" "$SNR" "$HOPS"
+            if [ "$profundidad" -le 0 ]; then
+                en_nodo=0
+                [ -z "$nombre" ] && nombre="Nodo sin nombre"
+                printf "%-12s %-30s %-10s %-10s %-6s %-6s %-6s %-6s\n" "$id_nodo" "$nombre" "$lat" "$lon" "$alt" "$bat" "$snr" "$hops"
             fi
         fi
-    done <<< "$MESHTASTIC_OUTPUT"
+    done <<< "$SALIDA_MESHTASTIC"
 
     echo
     read -rp "¿Desea ver el Mapa de nodos? (s/n): " ver_mapa
@@ -353,25 +357,25 @@ function informacion_nodos() {
 }
 
 # ------------------------------------------------------------------
-# 4) Función para generar el mapa (única definición)
+# 4) Función para generar el mapa
 # ------------------------------------------------------------------
 function generar_mapa() {
-    MAP_FILE="/tmp/meshtastic_map.html"
+    ARCHIVO_MAPA="/tmp/meshtastic_mapa.html"
 
-    if [ -f "$MAP_FILE" ]; then
-        echo "Ya existe un mapa creado en: $MAP_FILE"
+    if [ -f "$ARCHIVO_MAPA" ]; then
+        echo "Ya existe un mapa creado en: $ARCHIVO_MAPA"
         read -rp "¿Deseas actualizarlo? (s/n): " actualizar
         if [[ "$actualizar" =~ ^[sS]$ ]]; then
             echo "Actualizando el mapa..."
-            rm "$MAP_FILE"
+            rm "$ARCHIVO_MAPA"
         else
             echo "Mostrando el mapa existente..."
             if command -v xdg-open &>/dev/null; then
-                xdg-open "$MAP_FILE"
+                xdg-open "$ARCHIVO_MAPA"
             elif command -v open &>/dev/null; then
-                open "$MAP_FILE"
+                open "$ARCHIVO_MAPA"
             else
-                echo "Abre manualmente el archivo: $MAP_FILE"
+                echo "Abre manualmente el archivo: $ARCHIVO_MAPA"
             fi
             read -p "Presiona Enter para continuar..."
             return
@@ -379,101 +383,101 @@ function generar_mapa() {
     fi
 
     echo "Obteniendo información de Meshtastic y generando mapa..."
-    MESHTASTIC_OUTPUT="$(meshtastic --info 2>/dev/null)"
-    if [ -z "$MESHTASTIC_OUTPUT" ]; then
+    SALIDA_MESHTASTIC="$(meshtastic --info 2>/dev/null)"
+    if [ -z "$SALIDA_MESHTASTIC" ]; then
         echo "No hay salida de 'meshtastic --info'."
         read -p "Presiona Enter para continuar..."
         return
     fi
 
     # Extraer el número de nodo propietario (myNodeNum)
-    MY_NODE_NUM=$(echo "$MESHTASTIC_OUTPUT" | grep -o '"myNodeNum": *[0-9]*' | head -n1 | sed 's/[^0-9]//g')
+    MI_NUMERO_NODO=$(echo "$SALIDA_MESHTASTIC" | grep -o '"myNodeNum": *[0-9]*' | head -n1 | sed 's/[^0-9]//g')
 
-    IN_NODES=0
-    IN_NODE=0
-    DEPTH=0
-    NAME=""
-    LAT=""
-    LON=""
-    NUM=""
-    NODES=""
+    en_nodos=0
+    en_nodo=0
+    profundidad=0
+    nombre=""
+    lat=""
+    lon=""
+    num=""
+    NODOS=""
 
-    while IFS= read -r line; do
-      if echo "$line" | grep -q "Nodes in mesh: {"; then
-        IN_NODES=1
+    while IFS= read -r linea; do
+      if echo "$linea" | grep -q "Nodes in mesh: {"; then
+        en_nodos=1
         continue
       fi
-      if [ "$IN_NODES" -eq 1 ] && echo "$line" | grep -q "^Preferences:"; then
+      if [ "$en_nodos" -eq 1 ] && echo "$linea" | grep -q "^Preferences:"; then
         break
       fi
-      [ "$IN_NODES" -eq 0 ] && continue
+      [ "$en_nodos" -eq 0 ] && continue
 
-      if [ "$IN_NODE" -eq 0 ] && echo "$line" | grep -Eoq '^[[:space:]]*"[!][^"]+":[[:space:]]*\{'; then
-        IN_NODE=1
-        DEPTH=1
-        NAME=""
-        LAT=""
-        LON=""
-        NUM=""
+      if [ "$en_nodo" -eq 0 ] && echo "$linea" | grep -Eoq '^[[:space:]]*"[!][^"]+":[[:space:]]*\{'; then
+        en_nodo=1
+        profundidad=1
+        nombre=""
+        lat=""
+        lon=""
+        num=""
         continue
       fi
 
-      if [ "$IN_NODE" -eq 1 ]; then
-        if echo "$line" | grep -q '"num":'; then
-            extracted=$(echo "$line" | sed -n 's/.*"num": *\([0-9]*\).*/\1/p')
-            [ -n "$extracted" ] && NUM="$extracted"
+      if [ "$en_nodo" -eq 1 ]; then
+        if echo "$linea" | grep -q '"num":'; then
+            extraido=$(echo "$linea" | sed -n 's/.*"num": *\([0-9]*\).*/\1/p')
+            [ -n "$extraido" ] && num="$extraido"
         fi
 
-        opens=$(echo "$line" | sed 's/[^{}]//g' | tr -cd '{' | wc -c)
-        closes=$(echo "$line" | sed 's/[^{}]//g' | tr -cd '}' | wc -c)
-        DEPTH=$(( DEPTH + opens - closes ))
+        opens=$(echo "$linea" | sed 's/[^{}]//g' | tr -cd '{' | wc -c)
+        closes=$(echo "$linea" | sed 's/[^{}]//g' | tr -cd '}' | wc -c)
+        profundidad=$(( profundidad + opens - closes ))
 
-        if echo "$line" | grep -q '"shortName":'; then
-          extracted=$(echo "$line" | sed -n 's/.*"shortName": *"\([^"]*\)".*/\1/p')
-          [ -n "$extracted" ] && NAME="$extracted"
+        if echo "$linea" | grep -q '"shortName":'; then
+          extraido=$(echo "$linea" | sed -n 's/.*"shortName": *"\([^"]*\)".*/\1/p')
+          [ -n "$extraido" ] && nombre="$extraido"
         fi
 
-        if echo "$line" | grep -q '"latitude":'; then
-          extracted=$(echo "$line" | sed -n 's/.*"latitude": *\([0-9.\-]*\).*/\1/p')
-          [ -n "$extracted" ] && LAT="$extracted"
+        if echo "$linea" | grep -q '"latitude":'; then
+          extraido=$(echo "$linea" | sed -n 's/.*"latitude": *\([0-9.\-]*\).*/\1/p')
+          [ -n "$extraido" ] && lat="$extraido"
         fi
 
-        if echo "$line" | grep -q '"longitude":'; then
-          extracted=$(echo "$line" | sed -n 's/.*"longitude": *\([0-9.\-]*\).*/\1/p')
-          [ -n "$extracted" ] && LON="$extracted"
+        if echo "$linea" | grep -q '"longitude":'; then
+          extraido=$(echo "$linea" | sed -n 's/.*"longitude": *\([0-9.\-]*\).*/\1/p')
+          [ -n "$extraido" ] && lon="$extraido"
         fi
 
-        if [ "$DEPTH" -le 0 ]; then
-          IN_NODE=0
-          if { [ -z "$LAT" ] || [ -z "$LON" ]; } && [ "$NUM" = "$MY_NODE_NUM" ]; then
-              LAT="$MY_LAT"
-              LON="$MY_LON"
+        if [ "$profundidad" -le 0 ]; then
+          en_nodo=0
+          if { [ -z "$lat" ] || [ -z "$lon" ]; } && [ "$num" = "$MI_NUMERO_NODO" ]; then
+              lat="$MI_LATITUD"
+              lon="$MI_LONGITUD"
           fi
-          if [ -n "$LAT" ] && [ -n "$LON" ]; then
-            [ -z "$NAME" ] && NAME="Nodo sin nombre"
-            NODES="$NODES
-$NAME	$LAT	$LON"
+          if [ -n "$lat" ] && [ -n "$lon" ]; then
+            [ -z "$nombre" ] && nombre="Nodo sin nombre"
+            NODOS="$NODOS
+$nombre	$lat	$lon"
           fi
         fi
       fi
-    done <<< "$MESHTASTIC_OUTPUT"
+    done <<< "$SALIDA_MESHTASTIC"
 
-    NODES=$(echo "$NODES" | sed '/^[[:space:]]*$/d')
+    NODOS=$(echo "$NODOS" | sed '/^[[:space:]]*$/d')
     echo "Nodos con coordenadas:"
-    echo "$NODES"
+    echo "$NODOS"
 
-    if [ -z "$NODES" ]; then
+    if [ -z "$NODOS" ]; then
       echo "No se encontraron nodos con latitud/longitud."
       read -p "Presiona Enter para continuar..."
       return
     fi
 
-    FIRST_LINE="$(echo "$NODES" | head -n1)"
-    FIRST_NAME="$(echo "$FIRST_LINE" | cut -f1)"
-    FIRST_LAT="$(echo "$FIRST_LINE" | cut -f2)"
-    FIRST_LON="$(echo "$FIRST_LINE" | cut -f3)"
+    PRIMERA_LINEA="$(echo "$NODOS" | head -n1)"
+    PRIMER_NOMBRE="$(echo "$PRIMERA_LINEA" | cut -f1)"
+    PRIMER_LAT="$(echo "$PRIMERA_LINEA" | cut -f2)"
+    PRIMER_LON="$(echo "$PRIMERA_LINEA" | cut -f3)"
 
-    cat <<EOF > "$MAP_FILE"
+    cat <<EOF > "$ARCHIVO_MAPA"
 <!DOCTYPE html>
 <html lang="es">
 <head>
@@ -490,34 +494,34 @@ $NAME	$LAT	$LON"
 <body>
 <div id="map"></div>
 <script>
-var map = L.map('map').setView([$FIRST_LAT, $FIRST_LON], 10);
+var map = L.map('map').setView([$PRIMER_LAT, $PRIMER_LON], 10);
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
   maxZoom: 19,
   attribution: 'Map data © OpenStreetMap contributors'
 }).addTo(map);
 EOF
 
-    echo "$NODES" | while IFS=$'\t' read -r NODE_NAME NODE_LAT NODE_LON; do
-      SAFE_NAME="$(echo "$NODE_NAME" | sed "s/'/\\'/g")"
-      cat <<EOF >> "$MAP_FILE"
-L.marker([$NODE_LAT, $NODE_LON]).addTo(map)
-  .bindPopup('<div class="popup-text"><b>$SAFE_NAME</b><br>Lat: $NODE_LAT<br>Lon: $NODE_LON</div>');
+    echo "$NODOS" | while IFS=$'\t' read -r NOMBRE_NODE LAT_NODE LON_NODE; do
+      NOMBRE_SEGURO="$(echo "$NOMBRE_NODE" | sed "s/'/\\'/g")"
+      cat <<EOF >> "$ARCHIVO_MAPA"
+L.marker([$LAT_NODE, $LON_NODE]).addTo(map)
+  .bindPopup('<div class="popup-text"><b>$NOMBRE_SEGURO</b><br>Lat: $LAT_NODE<br>Lon: $LON_NODE</div>');
 EOF
     done
 
-    cat <<EOF >> "$MAP_FILE"
+    cat <<EOF >> "$ARCHIVO_MAPA"
 </script>
 </body>
 </html>
 EOF
 
-    echo "Mapa generado en: $MAP_FILE"
+    echo "Mapa generado en: $ARCHIVO_MAPA"
     if command -v xdg-open &>/dev/null; then
-        xdg-open "$MAP_FILE"
+        xdg-open "$ARCHIVO_MAPA"
     elif command -v open &>/dev/null; then
-        open "$MAP_FILE"
+        open "$ARCHIVO_MAPA"
     else
-        echo "Abre manualmente el archivo: $MAP_FILE"
+        echo "Abre manualmente el archivo: $ARCHIVO_MAPA"
     fi
     read -p "Presiona Enter para continuar..."
 }
@@ -539,6 +543,9 @@ while true; do
             informacion_nodos
             ;;
         4)
+            generar_mapa
+            ;;
+        5)
             echo "Saliendo del script."
             exit 0
             ;;
