@@ -11,7 +11,7 @@ WELCOME_MESSAGE_FILE="$HOME/.meshtastic_welcome_message"
 # Ajusta estos valores a tu ubicación real
 MY_LAT="41.855278"            # Tu latitud (origen)
 MY_LON="2.734722"             # Tu longitud (origen)
-MAX_ATTEMPTS=2              # Número máximo de intentos para cada traceroute
+MAX_ATTEMPTS=1              # Número máximo de intentos para cada traceroute
 MAP_FILE="/tmp/meshtastic_map.html"
 TRACEROUTE_MAP_FILE="/tmp/traceroute_map.html"
 
@@ -564,7 +564,6 @@ $NODE_ID	$NAME	$LAT	$LON"
               echo "No se obtuvo respuesta de $id tras 2 intentos."
           fi
       done < <(echo -e "$nodes_list" | sed '/^\s*$/d')
-
       successful_routes=$(echo -e "$successful_routes" | sed '/^\s*$/d')
       if [ -z "$successful_routes" ]; then
           echo "Ningún nodo respondió al traceroute."
@@ -584,6 +583,7 @@ $NODE_ID	$NAME	$LAT	$LON"
       TRACEROUTE_COORDS="$coords_json"
       # Formatear las rutas exitosas como array JSON
       TRACEROUTE_ROUTES=$(echo -e "$successful_routes" | sed '$ s/,$//')
+
       # Guardar en caché para usos futuros
       echo "$TRACEROUTE_COORDS" > "$TRACEROUTE_COORDS_CACHE"
       echo "$TRACEROUTE_ROUTES" > "$TRACEROUTE_ROUTES_CACHE"
