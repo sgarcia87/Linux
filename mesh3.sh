@@ -649,8 +649,14 @@ if [[ "$actualizar_traceroute" =~ ^[sS]$ ]]; then
           fi
           echo "Intento $attempt de $MAX_ATTEMPTS para $id..."
           if [ -n "$MY_IP" ]; then
+              echo "Enviando requerimiento de posición --->"
+              meshtastic --host "$MY_IP" --request-position --dest "$id"
+              echo "Realizando TRACEROUTE --> x --- x --- x ---> x "
               output=$(meshtastic --host "$MY_IP" --traceroute "$id" 2>&1)
           else
+              echo "Enviando requerimiento de posición --->"
+              meshtastic --request-position --dest "$id"
+              echo "Realizando TRACEROUTE --> x --- x --- x ---> x "
               output=$(meshtastic --traceroute "$id" 2>&1)
           fi
           # Buscar la línea que sigue a "Route traced:"
