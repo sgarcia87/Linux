@@ -32,6 +32,22 @@ fi
 
 WELCOME_MESSAGE="$(cat "$WELCOME_MESSAGE_FILE")"
 
+# Función de configuración
+function configuracion() {
+    clear
+    banner=$(figlet "Meshtastic" -t)
+    echo "$banner"
+    echo "==============================================="
+    echo "           MENÚ DE CONFIGURACIÓN"
+    echo "==============================================="
+    echo "Indicar LATITUD y LONGITUD de tu nodo."
+    echo "En caso de no aparecer tus coordenadas se usarán estas:"
+    echo "LAT: $MY_LAT, LON: $MY_LON"
+    read -p "Indica la LATITUD: " MY_LAT
+    read -p "Indica la LONGITUD: " MY_LON 
+}
+
+
 # ------------------------------------------------------------------
 # Menú principal
 # ------------------------------------------------------------------
@@ -40,14 +56,15 @@ function mostrar_menu() {
     banner=$(figlet "Meshtastic" -t)
     echo "$banner"
     echo "==============================================="
-    echo "           MENÚ DE CONFIGURACIÓN"
+    echo "           MENÚ PRINCIPAL"
     echo "==============================================="
     echo "1) Mensaje de Bienvenida Automatizado"
     echo "2) Enviar mensaje manual"
     echo "3) Información de nodos"
     echo "4) Ver mapa de nodos"
     echo "-----------------------------------------------"
-    echo "5) Salir"
+    echo "5) Configuración"
+    echo "6) Salir"
     echo "-----------------------------------------------"
 }
 
@@ -505,6 +522,10 @@ read -rp "¿Deseas actualizar el traceroute para actualizar el mapa? (s/n): " ac
 TRACEROUTE_COORDS=""
 TRACEROUTE_ROUTES=""
 if [[ "$actualizar_traceroute" =~ ^[sS]$ ]]; then
+  read -rp "Cuantos intentos quieres realizar por nodo?" MAX_ATTEMPTS
+  if [[ -z "$MAX_ATTEMPTS" || ! "$MAX_ATTEMPTS" =~ ^[0-9]+$ ]]; then
+    MAX_ATTEMPTS=1
+  fi
   echo "Ejecutando traceroute en los nodos..."
 
   # Configuramos captura de Ctrl+C para detener el traceroute
@@ -524,7 +545,7 @@ if [[ "$actualizar_traceroute" =~ ^[sS]$ ]]; then
       coords["$id"]="${lat},${lon}"
   done < <(echo -e "$nodes_list" | sed '/^\s*$/d')
 
-  # Ejecutar traceroute en cada nodo (máximo 2 intentos) y construir el array JSON de rutas
+  # Ejecutar traceroute en cada nodo y construir el array JSON de rutas
   successful_routes=""
   while IFS=',' read -r id lat lon hops; do
       [ -z "$id" ] && continue
@@ -536,12 +557,12 @@ if [[ "$actualizar_traceroute" =~ ^[sS]$ ]]; then
       echo "Realizando traceroute a $id..."
       attempt=1
       route_found=""
-      while [ $attempt -le 2 ]; do
+      while [ $attempt -le $MAX_ATTEMPTS ]; do
           # Comprobar en cada intento si se pulsó Ctrl+C
           if [ "$cancel_traceroute" -eq 1 ]; then
               break 2
           fi
-          echo "Intento $attempt para $id..."
+          echo "Intento $attempt de $MAX_ATTEMPTS para $id..."
           output=$(meshtastic --traceroute "$id" 2>&1)
           # Buscar la línea que sigue a "Route traced:"
           route_line=$(echo "$output" | awk '/Route traced:/{getline; print}')
@@ -579,7 +600,7 @@ if [[ "$actualizar_traceroute" =~ ^[sS]$ ]]; then
           route_object=$(printf '{"id": "%s", "route": %s}' "$id" "$route_json")
           successful_routes="${successful_routes}${route_object},\n"
       else
-          echo "No se obtuvo respuesta de $id tras 2 intentos."
+          echo "No se obtuvo respuesta de $id tras intentar $MAX_ATTEMPTS Traceroute."
       fi
   done < <(echo -e "$nodes_list" | sed '/^\s*$/d')
 
@@ -738,8 +759,10 @@ while true; do
         4)
             generar_mapa
             ;;
-            
         5)
+            configuracion
+            ;;        
+        6)
             echo "Saliendo del script."
             exit 0
             ;;
