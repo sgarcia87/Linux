@@ -46,7 +46,7 @@ function configuracion() {
     echo "1) Configurar posición GPS de tu nodo."
     echo "2) Configurar conexión vía WIFI."
     echo "3) Volver al menú principal."
-    read respuesta
+    read -rp "Selecciona una opción: " respuesta
     case "$respuesta" in
        1)
             configuracion_1
@@ -88,7 +88,7 @@ function configuracion_2() {
     echo "       MENÚ DE CONFIGURACIÓN WIFI"
     echo "==============================================="
     echo "Quieres activar la conexión vía wifi? (s/n)"
-    read -p respuesta
+    read -rp "Indica s/n: " respuesta
     if [ "$respuesta" == "s" ] | [ "$respuesta" == "S" ]; then
         echo "Indicar la IP de tu nodo."
         echo "IP: $MY_IP"
