@@ -89,7 +89,7 @@ function configuracion_2() {
     echo "==============================================="
     echo "Quieres activar la conexión vía wifi? (s/n)"
     read -rp "Indica s/n: " respuesta
-    if [ "$respuesta" == "s" ] | [ "$respuesta" == "S" ]; then
+    if [ "$respuesta" == "s" ] || [ "$respuesta" == "S" ]; then
         echo "Indicar la IP de tu nodo."
         echo "IP: $MY_IP"
         read -p "Indica la IP: " MY_IP
