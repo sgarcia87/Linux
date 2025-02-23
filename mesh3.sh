@@ -7,6 +7,9 @@ clear
 NODE_LIST_FILE="$HOME/.meshtastic_nodes"
 WELCOME_MESSAGE_FILE="$HOME/.meshtastic_welcome_message"
 
+# Configuración para la conexión vía WIFI
+MY_IP="" 	# Indicar la IP del nodo, ej: 192.168.1.40
+
 # Variables de ubicación del nodo propietario (si no aparecen sus coordenadas)
 # Ajusta estos valores a tu ubicación real
 MY_LAT="41.855278"            # Tu latitud (origen)
@@ -40,11 +43,57 @@ function configuracion() {
     echo "==============================================="
     echo "           MENÚ DE CONFIGURACIÓN"
     echo "==============================================="
+    echo "1) Configurar posición GPS de tu nodo."
+    echo "2) Configurar conexión vía WIFI."
+    echo "3) Volver al menú principal."
+    read respuesta
+    case "$respuesta" in
+       1)
+            configuracion_1
+            ;;
+       2)
+            configuracion_2
+            ;;
+       3)
+            echo "Volviendo al Menú principal."
+            ;;
+        *)
+            echo "Opción no válida. Inténtalo de nuevo."
+            read -p "Presiona Enter para continuar..."
+            ;;
+    esac
+}
+
+# Función de configuración
+function configuracion_1() {
+    clear
+    banner=$(figlet "Meshtastic" -t)
+    echo "$banner"
+    echo "==============================================="
+    echo "       MENÚ DE CONFIGURACIÓN LAT/LON"
+    echo "==============================================="
     echo "Indicar LATITUD y LONGITUD de tu nodo."
     echo "En caso de no aparecer tus coordenadas se usarán estas:"
-    echo "LAT: $MY_LAT, LON: $MY_LON"
+    echo "LAT: $MY_LAT , LON: $MY_LON"
     read -p "Indica la LATITUD: " MY_LAT
     read -p "Indica la LONGITUD: " MY_LON 
+}
+
+# Función de configuración
+function configuracion_2() {
+    clear
+    banner=$(figlet "Meshtastic" -t)
+    echo "$banner"
+    echo "==============================================="
+    echo "       MENÚ DE CONFIGURACIÓN WIFI"
+    echo "==============================================="
+    echo "Quieres activar la conexión vía wifi? (s/n)"
+    read -p respuesta
+    if [ "$respuesta" == "s" ] | [ "$respuesta" == "S" ]; then
+        echo "Indicar la IP de tu nodo."
+        echo "IP: $MY_IP"
+        read -p "Indica la IP: " MY_IP
+    fi
 }
 
 
@@ -128,12 +177,22 @@ function iniciar_monitoreo() {
         fi
 
         # Extraer nombres usando awk (igual que en el script original)
-        meshtastic --info | awk -F '"' '
+        if [ -n "$MY_IP" ]; then
+            meshtastic --host "$MY_IP" --info | awk -F '"' '
         /"user"/ {
             getline; getline;
             split($4, name, "\\\\u");
             print name[1]
         }' > /tmp/current_nodes
+        else
+            meshtastic --info | awk -F '"' '
+        /"user"/ {
+            getline; getline;
+            split($4, name, "\\\\u");
+            print name[1]
+        }' > /tmp/current_nodes
+        
+        fi
 
         if [ "$a" == "0" ]; then
             echo -e "\n--- Nodos actuales en la red ---"
@@ -153,7 +212,11 @@ function iniciar_monitoreo() {
             while read -r node_name; do
                 if ! grep -Fxq "$node_name" "$NODE_LIST_FILE"; then
                     echo "🆕 Nuevo nodo detectado: $node_name"
-                    meshtastic --sendtext "$(printf "$WELCOME_MESSAGE" "$node_name")"
+                    if [ -n "$MY_IP" ]; then
+                        meshtastic --host "$MY_IP" --sendtext "$(printf "$WELCOME_MESSAGE" "$node_name")"
+                    else
+                        meshtastic --sendtext "$(printf "$WELCOME_MESSAGE" "$node_name")"
+                    fi
                     echo "$node_name" >> "$NODE_LIST_FILE"
                     a=0
                 fi
@@ -171,7 +234,11 @@ function iniciar_monitoreo() {
 # ------------------------------------------------------------------
 function listar_nodos_id() {
     local output
-    output="$(meshtastic --info 2>/dev/null)"
+    if [ -n "$MY_IP" ]; then
+        output="$(meshtastic --host "$MY_IP" --info 2>/dev/null)"
+    else
+        output="$(meshtastic --info 2>/dev/null)"
+    fi
     [ -z "$output" ] && return 1
 
     local in_nodes=0
@@ -240,11 +307,19 @@ function enviar_mensaje() {
             echo "----------------------------------------------"
             echo
             read -rp "Introduce el Node ID de destino (ej: !99c95e76): " node_id
-            meshtastic --sendtext "$mensaje" --dest "$node_id"
+            if [ -n "$MY_IP" ]; then
+                meshtastic --host "$MY_IP" --sendtext "$mensaje" --dest "$node_id"
+            else
+                meshtastic --sendtext "$mensaje" --dest "$node_id"
+            fi
             echo "Mensaje enviado al nodo $node_id."
             ;;
         2)
-            meshtastic --dest '^all' --sendtext "$mensaje"
+            if [ -n "$MY_IP" ]; then     
+                meshtastic --host "$MY_IP" --dest '^all' --sendtext "$mensaje"
+            else
+                meshtastic --dest '^all' --sendtext "$mensaje"
+            fi
             echo "Mensaje enviado al canal (^all)."
             ;;
         *)
@@ -261,7 +336,11 @@ function enviar_mensaje() {
 # ------------------------------------------------------------------
 function informacion_nodos() {
     echo "Obteniendo información de los nodos..."
-    MESHTASTIC_OUTPUT="$(meshtastic --info 2>/dev/null)"
+    if [ -n "$MY_IP" ]; then     
+        MESHTASTIC_OUTPUT="$(meshtastic --host "$MY_IP" --info 2>/dev/null)"
+    else
+        MESHTASTIC_OUTPUT="$(meshtastic --info 2>/dev/null)"
+    fi
     if [ -z "$MESHTASTIC_OUTPUT" ]; then
         echo "No hay salida de 'meshtastic --info'."
         read -p "Presiona Enter para continuar..."
@@ -418,7 +497,11 @@ function generar_mapa() {
     fi
 
     echo "Obteniendo información de Meshtastic y generando mapa..."
-    MESHTASTIC_OUTPUT="$(meshtastic --info 2>/dev/null)"
+    if [ -n "$MY_IP" ]; then     
+        MESHTASTIC_OUTPUT="$(meshtastic --host "$MY_IP" --info 2>/dev/null)"
+    else
+        MESHTASTIC_OUTPUT="$(meshtastic --info 2>/dev/null)"   
+    fi
     if [ -z "$MESHTASTIC_OUTPUT" ]; then
         echo "No hay salida de 'meshtastic --info'."
         read -p "Presiona Enter para continuar..."
@@ -563,7 +646,11 @@ if [[ "$actualizar_traceroute" =~ ^[sS]$ ]]; then
               break 2
           fi
           echo "Intento $attempt de $MAX_ATTEMPTS para $id..."
-          output=$(meshtastic --traceroute "$id" 2>&1)
+          if [ -n "$MY_IP" ]; then
+              output=$(meshtastic --host "$MY_IP" --traceroute "$id" 2>&1)
+          else
+              output=$(meshtastic --traceroute "$id" 2>&1)
+          fi
           # Buscar la línea que sigue a "Route traced:"
           route_line=$(echo "$output" | awk '/Route traced:/{getline; print}')
           if [ -n "$route_line" ]; then
