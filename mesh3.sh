@@ -93,6 +93,8 @@ function configuracion_2() {
         echo "Indicar la IP de tu nodo."
         echo "IP: $MY_IP"
         read -p "Indica la IP: " MY_IP
+    else
+        MY_IP=""
     fi
 }
 
