@@ -495,110 +495,140 @@ $NODE_ID	$NAME	$LAT	$LON"
       read -p "Presiona Enter para continuar..."
       return
     fi
+####################################
+# ------------------------------------------------------------------
+# Preguntar si se desea actualizar el traceroute
+# ------------------------------------------------------------------
+echo ""
+read -rp "¿Deseas actualizar el traceroute para actualizar el mapa? (s/n): " actualizar_traceroute
 
-    # ------------------------------------------------------------------
-    # Preguntar si se desea actualizar el traceroute
-    # ------------------------------------------------------------------
-    echo ""
-    read -rp "¿Deseas actualizar el traceroute para actualizar el mapa? (s/n): " actualizar_traceroute
+TRACEROUTE_COORDS=""
+TRACEROUTE_ROUTES=""
+if [[ "$actualizar_traceroute" =~ ^[sS]$ ]]; then
+  echo "Ejecutando traceroute en los nodos..."
 
-    TRACEROUTE_COORDS=""
-    TRACEROUTE_ROUTES=""
-    if [[ "$actualizar_traceroute" =~ ^[sS]$ ]]; then
-      echo "Ejecutando traceroute en los nodos..."
-      # Preparar lista de nodos en el formato: id,lat,lon,hops (se asume hops=1)
-      nodes_list=""
-      while IFS=$'\t' read -r node_id node_name node_lat node_lon; do
-         nodes_list="${nodes_list}${node_id},${node_lat},${node_lon},1\n"
-      done <<< "$NODES"
+  # Configuramos captura de Ctrl+C para detener el traceroute
+  cancel_traceroute=0
+  trap 'echo -e "\nTraceroute detenido por el usuario. Presiona Enter para continuar..."; read -p ""; cancel_traceroute=1' SIGINT
 
-      # Crear un array asociativo de coordenadas: key = node id, value = "lat,lon"
-      declare -A coords
-      while IFS=',' read -r id lat lon hops; do
-          [ -z "$id" ] && continue
-          coords["$id"]="${lat},${lon}"
-      done < <(echo -e "$nodes_list" | sed '/^\s*$/d')
+  # Preparar lista de nodos en el formato: id,lat,lon,hops (se asume hops=1)
+  nodes_list=""
+  while IFS=$'\t' read -r node_id node_name node_lat node_lon; do
+     nodes_list="${nodes_list}${node_id},${node_lat},${node_lon},1\n"
+  done <<< "$NODES"
 
-      # Ejecutar traceroute en cada nodo (máximo 2 intentos) y construir el array JSON de rutas
-      successful_routes=""
-      while IFS=',' read -r id lat lon hops; do
-          [ -z "$id" ] && continue
-          echo ""
-          echo "Realizando traceroute a $id..."
-          attempt=1
-          route_found=""
-          while [ $attempt -le 2 ]; do
-              echo "Intento $attempt para $id..."
-              output=$(meshtastic --traceroute "$id" 2>&1)
-              # Buscar la línea que sigue a "Route traced:"
-              route_line=$(echo "$output" | awk '/Route traced:/{getline; print}')
-              if [ -n "$route_line" ]; then
-                  route_found=$(echo "$route_line" | xargs)
-                  break
-              else
-                  echo "Sin respuesta en intento $attempt para $id."
-              fi
-              attempt=$((attempt+1))
-          done
+  # Crear un array asociativo de coordenadas: key = node id, value = "lat,lon"
+  declare -A coords
+  while IFS=',' read -r id lat lon hops; do
+      [ -z "$id" ] && continue
+      coords["$id"]="${lat},${lon}"
+  done < <(echo -e "$nodes_list" | sed '/^\s*$/d')
 
-          if [ -n "$route_found" ]; then
-              echo "Traceroute a $id respondido: $route_found"
-              # Convertir la ruta: separar por comas en lugar de " --> "
-              route_ids=$(echo "$route_found" | sed 's/ *--> */,/g')
-              IFS=',' read -ra arr <<< "$route_ids"
-              route_json=""
-              first=1
-              for element in "${arr[@]}"; do
-                  element=$(echo "$element" | xargs)
-                  if [ $first -eq 1 ]; then
-                      route_json="\"$element\""
-                      first=0
-                  else
-                      route_json="$route_json, \"$element\""
-                  fi
-              done
-              route_json="[$route_json]"
-              route_object=$(printf '{"id": "%s", "route": %s}' "$id" "$route_json")
-              successful_routes="${successful_routes}${route_object},\n"
-          else
-              echo "No se obtuvo respuesta de $id tras 2 intentos."
+  # Ejecutar traceroute en cada nodo (máximo 2 intentos) y construir el array JSON de rutas
+  successful_routes=""
+  while IFS=',' read -r id lat lon hops; do
+      [ -z "$id" ] && continue
+      # Si se pulsó Ctrl+C, salimos del bucle
+      if [ "$cancel_traceroute" -eq 1 ]; then
+          break
+      fi
+      echo ""
+      echo "Realizando traceroute a $id..."
+      attempt=1
+      route_found=""
+      while [ $attempt -le 2 ]; do
+          # Comprobar en cada intento si se pulsó Ctrl+C
+          if [ "$cancel_traceroute" -eq 1 ]; then
+              break 2
           fi
-      done < <(echo -e "$nodes_list" | sed '/^\s*$/d')
-      successful_routes=$(echo -e "$successful_routes" | sed '/^\s*$/d')
-      if [ -z "$successful_routes" ]; then
-          echo "Ningún nodo respondió al traceroute."
-      fi
-
-      # Construir objeto JSON para las coordenadas (usado en el traceroute del mapa)
-      coords_json="{"
-      for key in "${!coords[@]}"; do
-          value=${coords[$key]}
-          lat_val=$(echo "$value" | cut -d, -f1)
-          lon_val=$(echo "$value" | cut -d, -f2)
-          coords_json="$coords_json \"$key\": [$lat_val, $lon_val],"
+          echo "Intento $attempt para $id..."
+          output=$(meshtastic --traceroute "$id" 2>&1)
+          # Buscar la línea que sigue a "Route traced:"
+          route_line=$(echo "$output" | awk '/Route traced:/{getline; print}')
+          if [ -n "$route_line" ]; then
+              route_found=$(echo "$route_line" | xargs)
+              break
+          else
+              echo "Sin respuesta en intento $attempt para $id."
+          fi
+          attempt=$((attempt+1))
       done
-      # Agregar el nodo propietario (OWNER) con las coordenadas definidas
-      coords_json="$coords_json \"OWNER\": [$MY_LAT, $MY_LON]"
-      coords_json="${coords_json%,} }"
-      TRACEROUTE_COORDS="$coords_json"
-      # Formatear las rutas exitosas como array JSON
-      TRACEROUTE_ROUTES=$(echo -e "$successful_routes" | sed '$ s/,$//')
 
-      # Guardar en caché para usos futuros
-      echo "$TRACEROUTE_COORDS" > "$TRACEROUTE_COORDS_CACHE"
-      echo "$TRACEROUTE_ROUTES" > "$TRACEROUTE_ROUTES_CACHE"
-    else
-      # Si el usuario decide no actualizar, se intenta cargar la información de caché
-      if [ -f "$TRACEROUTE_COORDS_CACHE" ] && [ -f "$TRACEROUTE_ROUTES_CACHE" ]; then
-          echo "Usando datos de traceroute en caché."
-          TRACEROUTE_COORDS=$(cat "$TRACEROUTE_COORDS_CACHE")
-          TRACEROUTE_ROUTES=$(cat "$TRACEROUTE_ROUTES_CACHE")
-      else
-          echo "No hay datos de traceroute en caché."
-          TRACEROUTE_COORDS=""
-          TRACEROUTE_ROUTES=""
+      # Si se pulsó Ctrl+C durante el intento, salimos
+      if [ "$cancel_traceroute" -eq 1 ]; then
+          break
       fi
-    fi
+
+      if [ -n "$route_found" ]; then
+          echo "Traceroute a $id respondido: $route_found"
+          # Convertir la ruta: separar por comas en lugar de " --> "
+          route_ids=$(echo "$route_found" | sed 's/ *--> */,/g')
+          IFS=',' read -ra arr <<< "$route_ids"
+          route_json=""
+          first=1
+          for element in "${arr[@]}"; do
+              element=$(echo "$element" | xargs)
+              if [ $first -eq 1 ]; then
+                  route_json="\"$element\""
+                  first=0
+              else
+                  route_json="$route_json, \"$element\""
+              fi
+          done
+          route_json="[$route_json]"
+          route_object=$(printf '{"id": "%s", "route": %s}' "$id" "$route_json")
+          successful_routes="${successful_routes}${route_object},\n"
+      else
+          echo "No se obtuvo respuesta de $id tras 2 intentos."
+      fi
+  done < <(echo -e "$nodes_list" | sed '/^\s*$/d')
+
+  # Restaurar el manejo por defecto de SIGINT
+  trap - SIGINT
+
+  # Si se interrumpió el traceroute, salimos de la función regresando al menú
+  if [ "$cancel_traceroute" -eq 1 ]; then
+      echo ""
+      echo "Mapa Traceroute cancelado..."
+      read -p "Pulse Enter para continuar..."
+      return
+  fi
+
+  successful_routes=$(echo -e "$successful_routes" | sed '/^\s*$/d')
+  if [ -z "$successful_routes" ]; then
+      echo "Ningún nodo respondió al traceroute."
+  fi
+
+  # Construir objeto JSON para las coordenadas (usado en el traceroute del mapa)
+  coords_json="{"
+  for key in "${!coords[@]}"; do
+      value=${coords[$key]}
+      lat_val=$(echo "$value" | cut -d, -f1)
+      lon_val=$(echo "$value" | cut -d, -f2)
+      coords_json="$coords_json \"$key\": [$lat_val, $lon_val],"
+  done
+  # Agregar el nodo propietario (OWNER) con las coordenadas definidas
+  coords_json="$coords_json \"OWNER\": [$MY_LAT, $MY_LON]"
+  coords_json="${coords_json%,} }"
+  TRACEROUTE_COORDS="$coords_json"
+  # Formatear las rutas exitosas como array JSON
+  TRACEROUTE_ROUTES=$(echo -e "$successful_routes" | sed '$ s/,$//')
+
+  # Guardar en caché para usos futuros
+  echo "$TRACEROUTE_COORDS" > "$TRACEROUTE_COORDS_CACHE"
+  echo "$TRACEROUTE_ROUTES" > "$TRACEROUTE_ROUTES_CACHE"
+else
+  # ... (resto de la función en caso de no actualizar traceroute)
+  if [ -f "$TRACEROUTE_COORDS_CACHE" ] && [ -f "$TRACEROUTE_ROUTES_CACHE" ]; then
+      echo "Usando datos de traceroute en caché."
+      TRACEROUTE_COORDS=$(cat "$TRACEROUTE_COORDS_CACHE")
+      TRACEROUTE_ROUTES=$(cat "$TRACEROUTE_ROUTES_CACHE")
+  else
+      echo "No hay datos de traceroute en caché."
+      TRACEROUTE_COORDS=""
+      TRACEROUTE_ROUTES=""
+  fi
+fi
 
     # ------------------------------------------------------------------
     # Generar el HTML del mapa
