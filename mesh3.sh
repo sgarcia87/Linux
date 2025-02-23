@@ -522,7 +522,7 @@ read -rp "¿Deseas actualizar el traceroute para actualizar el mapa? (s/n): " ac
 TRACEROUTE_COORDS=""
 TRACEROUTE_ROUTES=""
 if [[ "$actualizar_traceroute" =~ ^[sS]$ ]]; then
-  read -rp "Cuantos intentos quieres realizar por nodo?" MAX_ATTEMPTS
+  read -rp "Cuantos intentos quieres realizar por nodo? " MAX_ATTEMPTS
   if [[ -z "$MAX_ATTEMPTS" || ! "$MAX_ATTEMPTS" =~ ^[0-9]+$ ]]; then
     MAX_ATTEMPTS=1
   fi
