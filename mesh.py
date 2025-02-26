@@ -17,10 +17,23 @@ def sanitize_text(text):
     """Devuelve solo caracteres imprimibles, reemplazando lo demás por '?'."""
     return ''.join(ch if ch in string.printable else '?' for ch in text)
 
+def safe_convert(value):
+    """
+    Intenta convertir 'value' a una cadena JSON; si falla, devuelve str(value).
+    Así evitamos errores de "not JSON serializable".
+    """
+    try:
+        if isinstance(value, bytes):
+            return value.decode("utf-8", errors="replace")
+        return json.dumps(value, indent=1)
+    except Exception:
+        return str(value)
+
 def on_receive(packet, interface=None):
     """
-    Callback para capturar mensajes y guardarlos en messages_table,
-    formateando la información según el tipo de mensaje.
+    Callback para capturar mensajes y guardarlos en messages_table, formateando
+    la información según el tipo de mensaje. Además, si el mensaje es TRACEROUTE_APP
+    y contiene una ruta, se actualiza traceroutes_table.
     """
     try:
         frm = packet.get("fromId", str(packet.get("from")))
@@ -28,30 +41,27 @@ def on_receive(packet, interface=None):
         port = decoded.get("portnum", "N/A")
         if port == "TRACEROUTE_APP":
             traceroute_info = decoded.get("traceroute", {})
-            if traceroute_info and "route" in traceroute_info:
-                payload_str = "Route: " + json.dumps(traceroute_info["route"], indent=1)
+            route = traceroute_info.get("route")
+            if route:
+                payload_str = "Route: " + safe_convert(route)
+                # Actualiza traceroutes_table
+                global traceroutes_table
+                traceroutes_table.append({"NodeID": frm, "Route": safe_convert(route)})
+                if len(traceroutes_table) > 10:
+                    traceroutes_table.pop(0)
             else:
                 payload_str = "No route info"
         elif port == "TELEMETRY_APP":
             telemetry_info = decoded.get("telemetry", {})
-            if telemetry_info:
-                payload_str = "Telemetry: " + json.dumps(telemetry_info, indent=1)
-            else:
-                payload_str = "No telemetry info"
+            payload_str = "Telemetry: " + safe_convert(telemetry_info)
         elif port == "NODEINFO_APP":
             user_info = decoded.get("user", {})
-            if user_info:
-                payload_str = "User: " + json.dumps(user_info, indent=1)
-            else:
-                payload_str = "No user info"
+            payload_str = "User: " + safe_convert(user_info)
         elif port == "TEXT_MESSAGE_APP":
             payload = decoded.get("payload", b"")
-            if isinstance(payload, bytes):
-                payload_str = payload.decode("utf-8", errors="replace")
-            else:
-                payload_str = str(payload)
+            payload_str = safe_convert(payload)
         else:
-            payload_str = json.dumps(decoded, indent=1)
+            payload_str = safe_convert(decoded)
         payload_str = sanitize_text(payload_str)
         entry = {"From": frm, "Port": port, "Payload": payload_str}
         messages_table.append(entry)
@@ -99,9 +109,8 @@ def real_traceroute(mesh, node_id, hop_limit=10, wait_factor=1):
 
 def scheduler_traceroute(mesh):
     """
-    Recorre los nodos que tienen datos de posición y para cada uno
-    envía una solicitud de traceroute real. Si se recibe una ruta,
-    se guarda en traceroutes_table.
+    Recorre los nodos que tienen datos de posición y para cada uno envía una
+    solicitud de traceroute real. Si se recibe una ruta, se guarda en traceroutes_table.
     """
     global traceroutes_table
     while True:
