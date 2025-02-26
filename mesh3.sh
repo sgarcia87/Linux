@@ -2,13 +2,23 @@
 clear
 
 # ------------------------------------------------------------------
+# Comprobar uso del dispositivo USB (/dev/ttyUSB0)
+# ------------------------------------------------------------------
+usb_usage=$(lsof /dev/ttyUSB0 2>/dev/null)
+if [ -n "$usb_usage" ]; then
+    echo -e "\e[31mAVISO: El dispositivo USB (/dev/ttyUSB0) está siendo usado por el siguiente proceso:\e[0m"
+    echo "$usb_usage"
+    sleep 3
+fi
+
+# ------------------------------------------------------------------
 # Ficheros de configuración y variables
 # ------------------------------------------------------------------
 NODE_LIST_FILE="$HOME/.meshtastic_nodes"
 WELCOME_MESSAGE_FILE="$HOME/.meshtastic_welcome_message"
 
 # Configuración para la conexión vía WIFI
-MY_IP="" 	# Indicar la IP del nodo, ej: 192.168.1.40
+MY_IP="192.168.1.35" 	# Indicar la IP del nodo, ej: 192.168.1.40
 
 # Variables de ubicación del nodo propietario (si no aparecen sus coordenadas)
 # Ajusta estos valores a tu ubicación real
@@ -649,13 +659,15 @@ if [[ "$actualizar_traceroute" =~ ^[sS]$ ]]; then
           fi
           echo "Intento $attempt de $MAX_ATTEMPTS para $id..."
           if [ -n "$MY_IP" ]; then
-              echo "Enviando requerimiento de posición --->"
-              meshtastic --host "$MY_IP" --request-position --dest "$id"
+              echo "----------------------------------------"
+              echo "Enviando requerimiento de telemetría y posición --->"
+              meshtastic --host "$MY_IP" --request-position --request-telemetry --dest "$id"
               echo "Realizando TRACEROUTE --> x --- x --- x ---> x "
               output=$(meshtastic --host "$MY_IP" --traceroute "$id" 2>&1)
           else
-              echo "Enviando requerimiento de posición --->"
-              meshtastic --request-position --dest "$id"
+              echo "----------------------------------------"
+              echo "Enviando requerimiento de telemetría y posición --->"
+              meshtastic --request-position --request-telemetry --dest "$id"
               echo "Realizando TRACEROUTE --> x --- x --- x ---> x "
               output=$(meshtastic --traceroute "$id" 2>&1)
           fi
