@@ -142,6 +142,7 @@ auto() {
     echo -e "${BLUE}${BOLD}===============================================${NC}"
     echo -e "${BLUE}${BOLD} BUSCA USUARIOS NUEVOS Y REALIZA TRACEROUTES${NC}"
     echo -e "${BLUE}${BOLD}===============================================${NC}"
+    echo ""
     iniciar_monitoreo auto
     echo ""
     generar_mapa auto
@@ -814,6 +815,7 @@ function gestionar_traceroute() {
 # Generar el HTML del mapa a partir de los nodos y rutas
 # ------------------------------------------------------------------
 function crear_html_mapa() {
+    ORIGEN="$1"
     FIRST_LINE="$(echo "$NODES" | head -n1)"
     FIRST_NODE_ID=$(echo "$FIRST_LINE" | cut -f1)
     FIRST_NAME=$(echo "$FIRST_LINE" | cut -f2)
@@ -887,7 +889,10 @@ EOF
 
     echo -e "${GREEN}${SUCCESS} Mapa generado en: ${YELLOW}$MAP_FILE${NC}"
     open_file "$MAP_FILE"
-    read -p "Presiona Enter para continuar..."
+    ORIGEN="$1"
+    if [ "$ORIGEN" != "auto" ]; then
+        read -p "Presiona Enter para continuar..."
+    fi
     return 0
 }
 
@@ -903,7 +908,7 @@ function generar_mapa() {
             obtener_informacion_meshtastic || return
             extraer_nodos || return
             gestionar_traceroute auto || return
-            crear_html_mapa
+            crear_html_mapa auto
         done
         trap - SIGINT
     else
